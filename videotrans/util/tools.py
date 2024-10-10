@@ -264,6 +264,7 @@ def get_azure_rolelist():
 # 执行 ffmpeg
 def runffmpeg(arg, *, noextname=None, uuid=None,force_cpu=False):
     arg_copy = copy.deepcopy(arg)
+    file_name=""
 
     cmd = [config.FFMPEG_BIN, "-hide_banner", "-ignore_unknown"]
     # 启用了CUDA 并且没有禁用GPU
@@ -273,6 +274,7 @@ def runffmpeg(arg, *, noextname=None, uuid=None,force_cpu=False):
     for i, it in enumerate(arg):
         if arg[i] == '-i' and i < len(arg) - 1:
             arg[i + 1] = Path(arg[i + 1]).as_posix()
+            file_name=arg[i+1]
             if not vail_file(arg[i + 1]):
                 raise Exception(f'..{arg[i + 1]} {config.transobj["vlctips2"]}')
 
@@ -324,6 +326,8 @@ def runffmpeg(arg, *, noextname=None, uuid=None,force_cpu=False):
         if noextname:
             config.queue_novice[noextname] = "error"
         config.logger.error(f'cmd执行出错抛出异常{force_cpu=}:{cmd=},{str(e.stderr)}')
+        if file_name and re.search(r'["\'\`\s\[\]\{\}:\*\^\%\$\#\+\=\<\>\|]', file_name[2:]):
+            raise Exception('请检查视频名字或路径中是否存在特殊符号，请重命名为英文或数字名称并移动到仅由英文和数字组成的路径中重试' if config.defaulelang=='zh' else 'Please check if there are any special characters in the video name or path. Rename the video to English or numeric names and move it to a path consisting only of English and numeric characters and try again')
         raise
     except Exception as e:
         config.logger.exception(e)
@@ -804,14 +808,7 @@ def get_subtitle_from_srt(srtfile, *, is_file=True):
 
     content=''
     if is_file:
-        # 未知bug，srtfile存在却偶发读为空，似乎某处资源未释放，临时措施
-        retry=3
-        while retry>0:
-            content=_readfile(srtfile)
-            if len(content)>0:
-                break
-            time.sleep(2)
-            retry-=1
+        content=_readfile(srtfile)
     else:
         content = srtfile.strip()
 
@@ -1286,8 +1283,19 @@ def set_ass_font(srtfile=None):
 
 
 # 删除翻译结果的特殊字符
-def cleartext(text: str):
-    return text.replace('"', '').replace("'", '').replace('&#39;', '').replace('&quot;', "").strip()
+def cleartext(text: str,remove_start_end=True):
+    res_text=text.replace('&#39;', "'").replace('&quot;', '"').replace("\u200b", " ").strip()
+    # 删掉连续的多个标点符号，只保留一个
+    res_text=re.sub(r'([，。！？,.?]\s?){2,}', ',', res_text)
+    if not remove_start_end:
+        return res_text
+    if res_text[-1] in ['，',',']:
+        res_text=res_text[:-1]
+    if res_text[0] in ['，',',']:
+        res_text=res_text[1:]
+    return res_text
+
+
 
 
 # 如果仅相差一行，直接拆分最后一行内容为两行
